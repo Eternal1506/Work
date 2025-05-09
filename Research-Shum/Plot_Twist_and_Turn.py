@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 # -----------------------------
 def curvature(s):
     # Constant curvature: bends around y-axis with kappa2 = 1
-    return np.array([0.2*np.sin(s), 0.2*np.cos(s), 0.2*s^3])  # Example: circular arc in x-y plane
+    return np.array([1, 0, 0])  # Example: circular arc in x-y plane
 
 # -----------------------------
 # ODE system for rod kinematics
@@ -45,7 +45,6 @@ y0 = np.concatenate((x0, R0.flatten()))
 # -----------------------------
 # Integration parameters
 # -----------------------------
-# Integrating over 2π for a perfect circle when kappa = 1
 s_span = (0, 2*np.pi)
 s_eval = np.linspace(s_span[0], s_span[1], 500)
 
@@ -70,24 +69,16 @@ ax = fig.add_subplot(111, projection='3d')
 # Plot centerline
 ax.plot(X, Y, Z, color='b', linewidth=2, label='Rod Centerline')
 
-show_arrows = True  # Set to False to hide arrows
+show_arrows = False  # Set to False to hide arrows
 if show_arrows:
     # Plot directors (arrows) along the rod
     arrow_length = 0.5  # Length of arrows
-    for i in range(0, len(s_eval), 30):  # Adjust step for fewer arrows
+    for i in range(0, len(s_eval), 30): 
         R = sol.y[3:, i].reshape((3,3))
         pos = [X[i], Y[i], Z[i]]
         for j in range(3):
             ax.quiver(pos[0], pos[1], pos[2],
                       R[0,j], R[1,j], R[2,j], length=arrow_length, normalize=True, color=['r','g','k'][j])
-# # Plot directors (arrows) at selected points
-# arrow_length = 0.5  # much shorter, looks better relative to rod size
-# for i in range(0, len(s_eval), 30):
-#     R = sol.y[3:, i].reshape((3,3))
-#     pos = [X[i], Y[i], Z[i]]
-#     for j in range(3):
-#         ax.quiver(pos[0], pos[1], pos[2],
-#                   R[0,j], R[1,j], R[2,j], length = arrow_length, normalize = True, color=['r','g','k'][j])
 
 # -----------------------------
 # Plot settings
@@ -100,4 +91,5 @@ ax.legend()
 ax.grid(True)
 ax.set_box_aspect([1,1,1])  # Equal aspect ratio
 plt.tight_layout()
+ax.axis('equal') # Set equal aspect ratio for all axes (Can comment out if not needed)
 plt.show()
