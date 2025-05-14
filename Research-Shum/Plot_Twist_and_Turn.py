@@ -8,7 +8,7 @@ from mpl_toolkits.mplot3d import Axes3D
 # -----------------------------
 def curvature(s):
     # Constant curvature: bends around y-axis with kappa2 = 1
-    return np.array([1, 0, 0])  # Example: circular arc in x-y plane
+    return np.array([10, 0, 1])
 
 # -----------------------------
 # ODE system for rod kinematics
