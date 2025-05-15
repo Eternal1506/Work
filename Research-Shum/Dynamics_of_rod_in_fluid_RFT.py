@@ -32,27 +32,45 @@ def hat(v):
         [-v[1], v[0], 0]
     ])
 
-# ODE system in s for rod kinematics (given curvature)
-def rod_ode(s, y, t):
-    X = y[0:3]
-    R = y[3:12].reshape((3,3))
-    kappa = curvature(s, t)
-    dx_ds = R[:, 2]
-    kappa_hat = hat(kappa)
-    dR_ds = R @ kappa_hat
+# Integrate rod shape in s at fixed time t, given initial conditions y0
+def integrate_rod(t, y0):
+    def rod_ode(s, y):
+        X = y[0:3]
+        R = y[3:12].reshape((3,3))
+        kappa = curvature(s, t)
+        dx_ds = R[:, 2]
+        kappa_hat = hat(kappa)
+        dR_ds = R @ kappa_hat
 
-    dyds = np.zeros(12)
-    dyds[0:3] = dx_ds
-    dyds[3:12] = dR_ds.flatten()
-    return dyds
+        dyds = np.zeros(12)
+        dyds[0:3] = dx_ds
+        dyds[3:12] = dR_ds.flatten()
+        return dyds
+    sol = solve_ivp(rod_ode, (0, L), y0, t_eval=s_eval, vectorized=False)
+    Xs = sol.y[0:3, :]
+    Rs = np.zeros((3,3,N))
+    for i in range(N):
+        Rs[:,:,i] = sol.y[3:12, i].reshape((3,3))
+    return Xs, Rs
 
-# Initial conditions
+# Compute drag forces per segment from velocities and rotations
+def compute_drag_forces(V, Rs):
+    F_drag = np.zeros_like(V)
+    for i in range(N):
+        d3 = Rs[:,2,i]
+        v_par = np.dot(V[:,i], d3) * d3
+        v_perp = V[:,i] - v_par
+        F_drag[:,i] = -zeta_perp * v_perp - zeta_par * v_par
+    return F_drag
+
+# Initialize rod state: position and rotation at s=0
 x0 = np.array([0,0,0])
 R0 = np.eye(3)
 y0 = np.concatenate((x0, R0.flatten()))
 
-# Initialize rod position history
-X_prev = np.zeros((3, N))
+# Initialize rod position and rotation along s at time 0
+X_now, R_now = integrate_rod(0, y0)
+X_prev = X_now.copy()
 
 # Set up figure
 fig = plt.figure(figsize=(10,8))
@@ -68,12 +86,12 @@ def init():
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
-    ax.set_title('Prescribed Rod Actuation + RFT Forces')
+    ax.set_title('Kirchhoff Rod + RFT Drag Forces')
     ax.set_box_aspect([1,1,1])
     return line,
 
 def update(frame):
-    global X_prev, force_quivers
+    global X_now, R_now, X_prev, y0, force_quivers
     t = frame * dt
 
     # Clear old force arrows
@@ -81,38 +99,46 @@ def update(frame):
         fq.remove()
     force_quivers.clear()
 
-    # Integrate rod shape at time t
-    def ode_wrapper(s, y): return rod_ode(s, y, t)
-    sol = solve_ivp(ode_wrapper, (0, L), y0, t_eval=s_eval)
+    # Compute velocity from previous step
+    V = (X_now - X_prev) / dt
 
-    X_now = sol.y[0:3, :]
+    # Compute drag forces
+    F_drag = compute_drag_forces(V, R_now)
+
+    # For demonstration, we simply assume velocity is proportional to drag force:
+    # This is a very simplified force balance model: V = mobility * F_drag
+    # In reality, you would solve a more complex elastodynamics + drag system
+    mobility = 0.1
+    V_new = mobility * F_drag
+
+    # Update rod positions using velocity from force balance
+    X_next = X_now + V_new * dt
+
+    # Reconstruct y0 for next integration step from new base position and orientation
+    # For simplicity, keep R0 fixed here (no twist update)
+    y0 = np.concatenate((X_next[:,0], R0.flatten()))
+
+    # Integrate rod shape with updated base position and time
+    X_new, R_new = integrate_rod(t, y0)
+
+    # Update previous and current states
+    X_prev = X_now
+    X_now = X_new
+    R_now = R_new
 
     # Plot rod centerline
     line.set_data(X_now[0,:], X_now[1,:])
     line.set_3d_properties(X_now[2,:])
 
-    # Compute velocities (finite difference)
-    V = (X_now - X_prev) / dt
-
-    # Compute RFT drag forces (anisotropic)
+    # Plot drag force arrows every 20 points
     for i in range(0, N, 20):
-        R = sol.y[3:12, i].reshape((3,3))
-        d3 = R[:,2]
-        v_par = np.dot(V[:,i], d3) * d3
-        v_perp = V[:,i] - v_par
-        F_drag = -zeta_perp * v_perp - zeta_par * v_par
-
         fq = ax.quiver(X_now[0,i], X_now[1,i], X_now[2,i],
-                       F_drag[0], F_drag[1], F_drag[2],
-                       length=0.3, color='m')
+                       F_drag[0,i], F_drag[1,i], F_drag[2,i],
+                       length=arrow_length, color='m')
         force_quivers.append(fq)
-
-    # Update previous positions
-    X_prev = X_now.copy()
 
     return line, *force_quivers
 
-# Animate
 anim = FuncAnimation(fig, update, init_func=init, frames=num_steps, interval=50, blit=False)
 plt.tight_layout()
 plt.show()
