@@ -32,17 +32,22 @@ PARAMS = {
 
     # Intrinsic strain twist vector (um^-1)
     # Example for straight rod to helix (Fig. 2 top):
-    "Omega1": 1.3,
-    "Omega2": 0.0,
-    "Omega3": np.pi / 2.0,
+    # "Omega1": 1.3,
+    # "Omega2": 0.0,
+    # "Omega3": np.pi / 2.0,
 
     # Example for initially circular rod (based on Fig. 4, values might differ for open rod)
     # "Omega1": 1.2, # Intrinsic curvature in D1 direction
     # "Omega2": 0.0, # Intrinsic curvature in D2 direction
     # "Omega3": 0.6, # Intrinsic twist
 
+    "Omega1": 0.0, # Intrinsic curvature in D1 direction
+    "Omega2": 0.0, # Intrinsic curvature in D2 direction
+    "Omega3": 0.0, # Intrinsic twist
+    # Note: Omega values can be adjusted based on the initial shape and desired dynamics.
+
     # Initial shape configuration
-    "initial_shape": "straight", # Options: "straight", "circular"
+    "initial_shape": "sinoidal", # Options: "straight", "circular" , "sinoidal"
 
     # Parameters for "straight" initial_shape
     "xi_pert": 0.0001, # Perturbation for straight rod (from paper, section 6.1)
@@ -217,6 +222,24 @@ class KirchhoffRod:
                     # Director D2 (Eq. 48)
                     # D2(s) = -sin(alpha_s) * z_unit_vec + cos(alpha_s) * r_s_i_vec
                     self.D2[i, :] = -sin_alpha_s[i] * z_unit_vec + cos_alpha_s[i] * r_s_i_vec
+
+        if initial_shape == "sinoidal":
+            # Sinuoidal Rod Initialization 
+            self.X[:, 0] = s_vals
+            self.X[:, 1] = np.sin(s_vals / 10.0)  # Example sine wave perturbation
+            self.X[:, 2] = np.cos(s_vals / 10.0)  # Example cosine wave perturbation
+
+            self.D1[:, 0] = 1.0
+            self.D1[:, 1] = 0.0
+            self.D1[:, 2] = 0.0
+
+            self.D2[:, 0] = 0.0
+            self.D2[:, 1] = 1.0
+            self.D2[:, 2] = 0.0
+
+            self.D3[:, 0] = 0.0
+            self.D3[:, 1] = 0.0
+            self.D3[:, 2] = 1.0
 
         if initial_shape == "straight": # Handles default or fallback
             # --- Straight Rod Initialization (Eq. 40-43) ---

@@ -32,16 +32,16 @@ PARAMS = {
     "b3": 8.0e-1,  # Stretch modulus
 
     # Intrinsic strain twist vector (um^-1) - Example from Fig. 2 top
-    "Omega1": 1.3,
-    "Omega2": 0.0,
-    "Omega3": np.pi / 2.0,
-    # "Omega1": 0.0, # For a straight rod initially relaxing if perturbed
+    # "Omega1": 1.3,
     # "Omega2": 0.0,
-    # "Omega3": 0.0,
+    # "Omega3": np.pi / 2.0,
+    "Omega1": 0.0, # For a straight rod initially relaxing if perturbed
+    "Omega2": 0.0,
+    "Omega3": 0.0,
 
 
     # Initial perturbation
-    "xi_pert": 0.0001,
+    "xi_pert": 0.1,
 
     # Animation settings
     "animation_interval": 50,  # ms between frames
