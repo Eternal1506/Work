@@ -40,7 +40,7 @@ PARAMS = {
     "Omega3": 0.6, # Intrinsic twist
 
     # Initial shape configuration
-    "initial_shape": "sinoidal", # Options: "straight", "circular", "sinoidal"
+    "initial_shape": "straight", # Options: "straight", "circular", "sinoidal"
 
     # Parameters for "straight" initial_shape
     "xi_pert": 0.0001, # Perturbation for straight rod (from paper, section 6.1)
