@@ -35,18 +35,22 @@ PARAMS = {
     # "Omega2": 0.0,
     # "Omega3": np.pi / 2.0,
     # Example for initially circular rod (based on Fig. 4, values might differ for open rod)
-    "Omega1": 1.2, # Intrinsic curvature in D1 direction
+    # "Omega1": 1.2, # Intrinsic curvature in D1 direction
+    # "Omega2": 0.0, # Intrinsic curvature in D2 direction
+    # "Omega3": 0.6, # Intrinsic twist
+
+    "Omega1": 0.0, # Intrinsic curvature in D1 direction
     "Omega2": 0.0, # Intrinsic curvature in D2 direction
-    "Omega3": 0.6, # Intrinsic twist
+    "Omega3": 0.0, # Intrinsic twist
 
     # Initial shape configuration
-    "initial_shape": "straight", # Options: "straight", "circular", "sinoidal"
+    "initial_shape": "circular", # Options: "straight", "circular", "sinoidal"
 
     # Parameters for "straight" initial_shape
     "xi_pert": 0.0001, # Perturbation for straight rod (from paper, section 6.1)
 
     # Parameters for "circular" initial_shape
-    "r0_circ_val": None, # Specify a radius value directly, e.g., 2.5.
+    "r0_circ_val": 2.5, # Specify a radius value directly, e.g., 2.5.
                          # If None, calculated to make a full circle from L_eff.
     "eta_pert": 0.00,  # Perturbation for circular rod (n in Eq. 47-49 of paper, section 6.2)
 
@@ -57,37 +61,36 @@ PARAMS = {
 PARAMS["L_eff"] = (PARAMS["M"] - 1) * PARAMS["ds"]
 PARAMS["epsilon_reg"] = PARAMS["epsilon_reg_factor"] * PARAMS["ds"]
 
-# --- Helper Functions for Regularized Stokes Flow (Numba JITed) ---
+# --- Helper Functions for Regularized Stokes Flow ---
 
-@numba.njit(cache=True) # Added Numba JIT
+@numba.njit(cache=True)
 def H1_func(r, epsilon_reg):
     # Eq. (63) / (A.19)
     return (2*epsilon_reg**2 + r**2) / (8*np.pi*(epsilon_reg**2 + r**2)**(3.0/2.0))
 
-@numba.njit(cache=True) # Added Numba JIT
+@numba.njit(cache=True)  
 def H2_func(r, epsilon_reg):
     # Eq. (64) / (A.20)
     return 1.0 / (8*np.pi*(epsilon_reg**2 + r**2)**(3.0/2.0))
 
-@numba.njit(cache=True) # Added Numba JIT
+@numba.njit(cache=True) 
 def Q_func(r, epsilon_reg):
     # Eq. (65) / (A.21)
     return (5*epsilon_reg**2 + 2*r**2) / (8*np.pi*(epsilon_reg**2 + r**2)**(5.0/2.0))
 
-@numba.njit(cache=True) # Added Numba JIT
+@numba.njit(cache=True)
 def D1_func(r, epsilon_reg):
     # Eq. (67) / (A.23)
     return (10*epsilon_reg**4 - 7*epsilon_reg**2*r**2 - 2*r**4) / \
            (8*np.pi*(epsilon_reg**2 + r**2)**(7.0/2.0))
 
-@numba.njit(cache=True) # Added Numba JIT
+@numba.njit(cache=True)
 def D2_func(r, epsilon_reg):
     # Eq. (68) / (A.24)
     return (21*epsilon_reg**2 + 6*r**2) / \
            (8*np.pi*(epsilon_reg**2 + r**2)**(7.0/2.0))
 
-# --- Rotation Helpers (These remain standard Python as they use Scipy objects) ---
-# (get_rotation_matrix_sqrt and get_rodrigues_rotation_matrix remain unchanged)
+# --- Rotation Helpers ---
 def get_rotation_matrix_sqrt(R_mat):
     """Computes the principal square root of a 3x3 rotation matrix."""
     try:
@@ -336,11 +339,15 @@ class KirchhoffRod:
             self.D3[i] = np.cross(self.D1[i], self.D2[i])
 
     def _get_D_matrix(self, k):
+        """Returns the 3x3 director matrix D_k (directors as rows)."""
         return np.array([self.D1[k], self.D2[k], self.D3[k]])
 
     def compute_internal_forces_and_moments(self):
+        """Step 1: Compute F_{k+1/2} and N_{k+1/2}."""
+        # These are forces/moments on M-1 segments
         F_half = np.zeros((self.M - 1, 3))
         N_half = np.zeros((self.M - 1, 3))
+        # Store D_half_matrices for use in F_half, N_half component calculation
         self.D_half_matrices = [] 
         for k in range(self.M - 1): 
             Dk_mat = self._get_D_matrix(k)    
@@ -364,8 +371,11 @@ class KirchhoffRod:
         return F_half, N_half
 
     def compute_fluid_forces_on_rod(self, F_half, N_half):
+        """Step 2: Compute -f_k and -n_k (force/torque by fluid on rod)."""
+        # These are forces/torques on M points
         f_on_rod = np.zeros((self.M, 3)) 
         n_on_rod = np.zeros((self.M, 3)) 
+        # For the first and last points, we assume boundary conditions
         F_b_start, F_b_end, N_b_start, N_b_end = np.zeros(3), np.zeros(3), np.zeros(3), np.zeros(3)
         for k in range(self.M): 
             F_prev = F_b_start if k == 0 else F_half[k-1]
@@ -412,31 +422,6 @@ class KirchhoffRod:
 
 # --- Main Simulation and Animation ---
 if __name__ == '__main__':
-    # Perform a "warm-up" call for Numba JIT compilation if desired
-    # This compiles the functions on the first call.
-    # For very short total_time, this compilation time can be noticeable.
-    # For longer simulations, it's amortized.
-    print("Warming up Numba JIT compilation (this might take a moment)...")
-    try:
-        # Create dummy data for a minimal rod to trigger compilation
-        # Note: This warm-up needs to be careful not to pollute global state
-        # or be too computationally expensive itself.
-        # A simpler way is just to let the first simulation step do the JIT.
-        # For this example, we'll let the first step handle it.
-        # If you want a dedicated warm-up:
-        # M_warmup = 2
-        # X_warmup = np.zeros((M_warmup, 3))
-        # g0_warmup = np.zeros((M_warmup, 3))
-        # m0_warmup = np.zeros((M_warmup, 3))
-        # eps_warmup = 0.1
-        # mu_warmup = 1.0
-        # _compute_velocities_core(M_warmup, X_warmup, g0_warmup, m0_warmup, eps_warmup, mu_warmup)
-        # H1_func(0.1, eps_warmup) # etc. for other jitted functions
-        print("Numba functions will be JIT compiled on their first use during the simulation.")
-    except Exception as e:
-        print(f"Numba warm-up or availability check issue: {e}")
-
-
     rod = KirchhoffRod(PARAMS)
     num_steps = int(PARAMS["total_time"] / PARAMS["dt"])
     history_X = []
