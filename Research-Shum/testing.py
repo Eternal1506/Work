@@ -209,7 +209,7 @@ class KirchhoffRod:
             cross_term = np.zeros(3)
             if k<self.M-1: cross_term += np.cross((self.X[k+1]-self.X[k])/self.ds, F_next)
             if k>0: cross_term += np.cross((self.X[k]-self.X[k-1])/self.ds, F_prev)
-            n_on_fluid[k] = dN_ds + 0.5 * cross_term
+            n_on_fluid[k] = dN_ds + 0.5 * cross_term + + self.g_eff_force_density
         return f_on_fluid, n_on_fluid
 
     def compute_velocities(self, f_on_fluid, n_on_fluid):
