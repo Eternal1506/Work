@@ -42,13 +42,12 @@ PARAMS = {
 
     # --- GRAVITY PARAMETERS ---
     "gravity_on": True,
-    "rod_density_vol": 2.0e-12, # Rod is twice as dense as the fluid
+    "rod_density_vol": 6.0e-12, # Rod is twice as dense as the fluid
     "rod_radius": 0.1,         # Rod cross-section radius (um)
     "gravity_vector": np.array([0.0, 0.0, -9.8e6]), # g in um/s^2
-
-    # --- ANIMATION SETTINGS ---
-    "animation_interval": 40,  # ms between frames
-    "animation_steps_skip": 400, # Number of simulation steps to skip per frame (adjusted for new timing)
+    
+    # --- ANIMATION SETTINGS (NO LONGER USED FOR ANIMATION) ---
+    "animation_steps_skip": 400,
 }
 
 # --- Scenario-specific overrides ---
@@ -61,7 +60,6 @@ if PARAMS["scenario"] == "twist_helix":
         "Omega3": np.pi / 2.0,
         "gravity_on": False,
         "straight_rod_orientation_axis": 'z',
-        "animation_steps_skip": 100,
     })
 
 PARAMS["L_eff"] = (PARAMS["M"] - 1) * PARAMS["ds"]
@@ -139,7 +137,8 @@ class KirchhoffRod:
         self.Omega = np.array([self.p["Omega1"], self.p["Omega2"], self.p["Omega3"]])
         self.X = np.zeros((self.M, 3)); self.D1 = np.zeros((self.M, 3))
         self.D2 = np.zeros((self.M, 3)); self.D3 = np.zeros((self.M, 3))
-        
+        self.last_u_rod = np.zeros((self.M, 3))
+
         # --- GRAVITY SETUP ---
         self.g_eff_force_density = np.zeros(3)
         if self.p.get("gravity_on", False):
@@ -153,28 +152,25 @@ class KirchhoffRod:
             xi = self.p["xi_pert"]
             orient_axis = self.p.get("straight_rod_orientation_axis", 'z')
             if orient_axis == 'x':
-                self.X[:, 0] = s_vals; self.D3[:, 0] = 1.0 # Tangent along X
-                self.D1[:, 1] = 1.0; self.D2[:, 2] = 1.0   # D1 along Y, D2 along Z
+                self.X[:, 0] = s_vals; self.D3[:, 0] = 1.0
+                self.D1[:, 1] = 1.0; self.D2[:, 2] = 1.0
             elif orient_axis == 'y':
-                self.X[:, 1] = s_vals; self.D3[:, 1] = 1.0 # Tangent along Y
-                self.D1[:, 2] = 1.0; self.D2[:, 0] = 1.0   # D1 along Z, D2 along X
+                self.X[:, 1] = s_vals; self.D3[:, 1] = 1.0
+                self.D1[:, 2] = 1.0; self.D2[:, 0] = 1.0
             else: # Default 'z'
-                self.X[:, 2] = s_vals; self.D3[:, 2] = 1.0 # Tangent along Z
-                self.D1[:, 0] = 1.0; self.D2[:, 1] = 1.0   # D1 along X, D2 along Y
-            # Apply small perturbation rotation to non-tangent directors
+                self.X[:, 2] = s_vals; self.D3[:, 2] = 1.0
+                self.D1[:, 0] = 1.0; self.D2[:, 1] = 1.0
             pert_rot = get_rodrigues_rotation_matrix(self.D3[0], xi)
             self.D1 = self.D1 @ pert_rot.T
             self.D2 = self.D2 @ pert_rot.T
 
-        # (Circular initialization code remains unchanged)
-        # Final orthonormalization of initial directors
         for i in range(self.M):
             d1,d2 = self.D1[i].copy(),self.D2[i].copy(); 
             if np.linalg.norm(d1) > 1e-9: d1 /= np.linalg.norm(d1)
-            else: d1 = np.array([1.,0.,0.]) # Failsafe
+            else: d1 = np.array([1.,0.,0.])
             d2_ortho = d2 - np.dot(d2, d1)*d1
             if np.linalg.norm(d2_ortho) > 1e-9: d2_ortho /= np.linalg.norm(d2_ortho)
-            else: # Failsafe
+            else:
                 temp_vec = np.array([0.,1.,0.]) if np.abs(d1[0]) < 0.9 else np.array([0.,0.,1.])
                 d2_ortho = np.cross(d1, temp_vec); d2_ortho /= np.linalg.norm(d2_ortho)
             self.D1[i], self.D2[i] = d1, d2_ortho; self.D3[i] = np.cross(d1, d2_ortho)
@@ -195,21 +191,20 @@ class KirchhoffRod:
         return F_half, N_half
 
     def compute_fluid_forces_on_rod(self, F_half, N_half):
-        """Computes the force/torque exerted *by the rod on the fluid*."""
         f_on_fluid = np.zeros((self.M,3)); n_on_fluid = np.zeros((self.M,3))
         F_b_start, F_b_end, N_b_start, N_b_end = np.zeros(3),np.zeros(3),np.zeros(3),np.zeros(3)
         for k in range(self.M):
             F_prev = F_b_start if k==0 else F_half[k-1]
             F_next = F_b_end if k==self.M-1 else F_half[k]
             dF_ds = (F_next - F_prev) / self.ds
-            f_on_fluid[k] = dF_ds + self.g_eff_force_density # ADD GRAVITY TERM
+            f_on_fluid[k] = dF_ds + self.g_eff_force_density
             N_prev = N_b_start if k==0 else N_half[k-1]
             N_next = N_b_end if k==self.M-1 else N_half[k]
             dN_ds = (N_next - N_prev) / self.ds
             cross_term = np.zeros(3)
             if k<self.M-1: cross_term += np.cross((self.X[k+1]-self.X[k])/self.ds, F_next)
             if k>0: cross_term += np.cross((self.X[k]-self.X[k-1])/self.ds, F_prev)
-            n_on_fluid[k] = dN_ds + 0.5 * cross_term + + self.g_eff_force_density
+            n_on_fluid[k] = dN_ds + 0.5 * cross_term
         return f_on_fluid, n_on_fluid
 
     def compute_velocities(self, f_on_fluid, n_on_fluid):
@@ -217,6 +212,7 @@ class KirchhoffRod:
         return _compute_velocities_core(self.M, self.X, g0_all, m0_all, self.epsilon_reg, self.mu)
 
     def update_state(self, u_rod, w_rod):
+        self.last_u_rod = u_rod.copy()
         self.X += u_rod * self.dt
         for k in range(self.M):
             wk = w_rod[k]
@@ -230,44 +226,63 @@ class KirchhoffRod:
         u_rod, w_rod = self.compute_velocities(f_on_fluid, n_on_fluid)
         self.update_state(u_rod, w_rod)
 
-# --- Main Simulation and Animation Block ---
+# --- Main Simulation and Plotting Block ---
 if __name__ == '__main__':
     rod = KirchhoffRod(PARAMS)
-    num_steps = int(PARAMS["total_time"] / PARAMS["dt"]); history_X = []
+    num_steps = int(PARAMS["total_time"] / PARAMS["dt"])
+    
     print(f"Starting scenario: '{PARAMS['scenario']}' for {PARAMS['total_time']}s.")
     import time; start_time = time.time()
+    
+    # --- Run the simulation to the end ---
     for step in range(num_steps):
         rod.simulation_step()
-        if step % PARAMS["animation_steps_skip"] == 0:
-            history_X.append(rod.X.copy())
-            if step % (PARAMS["animation_steps_skip"]*10) == 0:
-                elapsed = time.time() - start_time
-                print(f"Step {step}/{num_steps}, Sim Time: {step*PARAMS['dt']:.2e}s, Wall Time: {elapsed:.2f}s")
-            if np.max(np.abs(rod.X)) > PARAMS["L_eff"] * 20: print("Sim unstable."); break
-            if np.isnan(rod.X).any(): print("NaN in coords."); break
+        if (step + 1) % (num_steps // 10) == 0:
+             print(f"Progress: {((step+1)/num_steps)*100:.0f}%")
+        if np.max(np.abs(rod.X)) > PARAMS["L_eff"] * 20: print("Sim unstable."); break
+        if np.isnan(rod.X).any(): print("NaN in coords."); break
+        
     print(f"Simulation finished. Total wall time: {time.time() - start_time:.2f}s.")
     
-    fig = plt.figure(figsize=(10,8)); ax = fig.add_subplot(111, projection='3d')
-    line, = ax.plot([],[],[], 'o-', lw=2, markersize=4, color='c')
-    ax.set_facecolor('k') # Black background
-    if history_X:
-        all_coords = np.concatenate(history_X,axis=0)
-        center = np.mean(all_coords, axis=0)
-        max_range = np.max(np.max(all_coords, axis=0) - np.min(all_coords, axis=0))
-        plot_range = max_range * 0.6 if max_range > 0 else PARAMS["L_eff"]
-        ax.set_xlim(center[0]-plot_range, center[0]+plot_range)
-        ax.set_ylim(center[1]-plot_range, center[1]+plot_range)
-        ax.set_zlim(center[2]-plot_range, center[2]+plot_range)
-    ax.set_xlabel("X (um)"); ax.set_ylabel("Y (um)"); ax.set_zlabel("Z (um)")
-    ax.set_title(f"Kirchhoff Rod: Scenario '{PARAMS['scenario']}'")
-    time_text = ax.text2D(0.05, 0.95, '', transform=ax.transAxes, color='white')
+    # --- Get final position data ---
+    final_X = rod.X
 
-    def update_animation(frame):
-        X_data = history_X[frame]
-        line.set_data(X_data[:,0], X_data[:,1]); line.set_3d_properties(X_data[:,2])
-        time_text.set_text(f"Time: {frame*PARAMS['animation_steps_skip']*PARAMS['dt']:.3f} s")
-        return line, time_text
+    # --- Plot 1: Final 3D Shape of the Rod ---
+    fig1 = plt.figure(figsize=(8, 7))
+    ax1 = fig1.add_subplot(111, projection='3d')
     
-    if history_X:
-        ani = FuncAnimation(fig,update_animation,frames=len(history_X),blit=False,interval=PARAMS["animation_interval"])
-        plt.show()
+    ax1.plot(final_X[:, 0], final_X[:, 1], final_X[:, 2], 'o-', lw=2, markersize=4, color='c')
+    ax1.set_facecolor('k')
+
+    # Auto-scaling axes for a good view
+    center = np.mean(final_X, axis=0)
+    max_range = np.max(final_X, axis=0) - np.min(final_X, axis=0)
+    plot_radius = np.max(max_range) * 0.6 if np.max(max_range) > 0 else PARAMS["L_eff"]
+    ax1.set_xlim(center[0] - plot_radius, center[0] + plot_radius)
+    ax1.set_ylim(center[1] - plot_radius, center[1] + plot_radius)
+    ax1.set_zlim(center[2] - plot_radius, center[2] + plot_radius)
+    
+    ax1.set_xlabel("X (μm)")
+    ax1.set_ylabel("Y (μm)")
+    ax1.set_zlabel("Z (μm)")
+    ax1.set_title(f"Final Rod Shape: Scenario '{PARAMS['scenario']}'")
+    ax1.set_aspect('equal', 'box')
+    
+    # --- MODIFICATION: Plot 2 is now for Position Components ---
+    fig2 = plt.figure(figsize=(10, 6))
+    ax2 = fig2.add_subplot(111)
+    
+    s_vals = np.arange(rod.M) * rod.ds
+
+    ax2.plot(s_vals, final_X[:, 0], 'r.-', label='$x$')
+    ax2.plot(s_vals, final_X[:, 1], 'g.-', label='$y$')
+    ax2.plot(s_vals, final_X[:, 2], 'b.-', label='$z$')
+    
+    ax2.set_xlabel("Position along rod, s (μm)")
+    ax2.set_ylabel("Position (μm)")
+    ax2.set_title("Final Position Components along the Rod")
+    ax2.grid(True, linestyle='--', alpha=0.6)
+    ax2.legend()
+    
+    # Show both plots
+    plt.show()
