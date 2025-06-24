@@ -15,7 +15,7 @@ PARAMS = {
 
     # --- TIME INTEGRATION ---
     "dt": 1.0e-5,  # Time step (s)
-    "total_time": 0.2, # Total simulation time (s)
+    "total_time": 0.05, # Total simulation time (s)
 
     # --- FLUID PROPERTIES ---
     "mu": 1.0e-6,  # Fluid viscosity (g um^-1 s^-1)
@@ -31,11 +31,11 @@ PARAMS = {
     # --- INITIAL SHAPE ---
     "initial_shape": "straight",
     "straight_rod_orientation_axis": 'x', # Start rod along x-axis for better viewing
-    "xi_pert": 1e-5,
+    "xi_pert": 0,
 
     # --- FLAGELLAR WAVE PARAMETERS (for 'flagellar_wave' scenario) ---
     "k_wave": 2 * np.pi / 5.0, # Wave number (rad/um), for a wavelength of 5um
-    "b_amp": 1,              # Wave amplitude (um)
+    "b_amp": 0.2,              # Wave amplitude (um)
     "sigma_freq": 250,         # Wave angular frequency (rad/s)
 
     # --- ANIMATION SETTINGS ---
@@ -77,7 +77,6 @@ def get_rotation_matrix_sqrt(R_mat):
         if not np.allclose(R_mat@R_mat.T,np.eye(3),atol=1e-5) or not np.isclose(np.linalg.det(R_mat),1.0,atol=1e-5):
             U,_,Vh = np.linalg.svd(R_mat); R_mat=U@Vh
             if np.linalg.det(R_mat)<0: Vh[-1,:]*=-1; R_mat=U@Vh
-        # --- FIXED: Removed the 'approximated=True' keyword argument ---
         return Rotation.from_matrix(R_mat).as_rotvec() * 0.5
     except Exception as e: raise e
 
@@ -155,7 +154,7 @@ class KirchhoffRod:
         # Final orthonormalization of initial directors
         for i in range(self.M):
             d1,d2 = self.D1[i].copy(), self.D2[i].copy(); 
-            if np.linalg.norm(d1)>1e-9: d1/=np.linalg.norm(d1) 
+            if np.linalg.norm(d1)>1e-9: d1/=np.linalg.norm(d1)
             else: d1=np.array([1.,0.,0.])
             d2_ortho = d2-np.dot(d2,d1)*d1
             if np.linalg.norm(d2_ortho)>1e-9: d2_ortho/=np.linalg.norm(d2_ortho)
@@ -169,8 +168,9 @@ class KirchhoffRod:
             k = self.p["k_wave"]
             b = self.p["b_amp"]
             sigma = self.p["sigma_freq"]
-            self.Omega[:, 0] = -k**2 * b * np.sin(k * self.s_vals + sigma * self.time)
-            self.Omega[:, 1] = 0.0 
+            
+            self.Omega[:, 0] = -k**2 * b * np.cos(k * self.s_vals + sigma * self.time)
+            self.Omega[:, 1] = 0.0
             self.Omega[:, 2] = 0.0 
 
     def compute_internal_forces_and_moments(self):
@@ -245,7 +245,6 @@ if __name__ == '__main__':
     
     fig=plt.figure(figsize=(12,8));ax=fig.add_subplot(111,projection='3d')
     line,=ax.plot([],[],[],'o-',lw=2,markersize=4,color='cyan')
-    ax.set_facecolor('#111111')
     if history_X:
         all_coords=np.concatenate(history_X,axis=0)
         center=np.mean(all_coords,axis=0)
