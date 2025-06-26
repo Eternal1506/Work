@@ -168,7 +168,7 @@ class KirchhoffRod:
             k = self.p["k_wave"]
             b = self.p["b_amp"]
             sigma = self.p["sigma_freq"]
-            phase = k*(40+self.s_vals) + sigma * self.time
+            phase = k*(self.s_vals) + sigma*self.time
             self.Omega[:, 0] = -k**2 * b * np.sin(phase)
             self.Omega[:, 1] = 0.0
             self.Omega[:, 2] = 0.0 
@@ -211,7 +211,7 @@ class KirchhoffRod:
         return _compute_velocities_core(self.M,self.X,g0_all,m0_all,self.epsilon_reg,self.mu)
 
     def update_state(self,u_rod,w_rod):
-        self.X+=u_rod*self.dt
+        self.X += u_rod * self.dt
         for k in range(self.M):
             wk=w_rod[k]
             if np.linalg.norm(wk)>1e-9:
