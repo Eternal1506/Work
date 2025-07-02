@@ -11,11 +11,11 @@ PARAMS = {
     
     # --- ROD PROPERTIES ---
     "M": 80,  # Number of immersed boundary points
-    "ds": 0.5, # Meshwidth for rod (um)
+    "ds": 0.05, # Meshwidth for rod (um)
 
     # --- TIME INTEGRATION ---
     "dt": 1.0e-5,  # Time step (s)
-    "total_time": 0.05, # Total simulation time (s)
+    "total_time": 0.1, # Total simulation time (s)
 
     # --- FLUID PROPERTIES ---
     "mu": 1.0e-6,  # Fluid viscosity (g um^-1 s^-1)
@@ -234,17 +234,6 @@ if __name__ == '__main__':
     import time; start_time=time.time()
     for step in range(num_steps):
         rod.simulation_step()
-        # if step % (PARAMS["animation_steps_skip"] * 10) == 0:
-        #     plt.figure(figsize=(7,4))
-        #     plt.plot(rod.s_vals, rod.Omega[:, 0], 'o-')
-        #     plt.xlabel("s (um)")
-        #     plt.ylabel(r"$\Omega_1(s)$")
-        #     plt.title(f"Intrinsic Curvature Profile at t = {rod.time:.4f} s")
-        #     plt.grid(True)
-        #     plt.tight_layout()
-        #     plt.show()
-        # if step % (PARAMS["animation_steps_skip"] * 10) == 0:
-        #     print(f"time = {rod.time:.4f}, Omega1[0] = {rod.Omega[0,0]:.4f}, Omega1[-1] = {rod.Omega[-1,0]:.4f}")
         if step%PARAMS["animation_steps_skip"]==0:
             history_X.append(rod.X.copy())
             if step%(PARAMS["animation_steps_skip"]*5)==0:

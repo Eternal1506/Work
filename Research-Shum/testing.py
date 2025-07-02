@@ -3,85 +3,127 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from scipy.spatial.transform import Rotation
 import numba
+import os
 
 # --- Parameters ---
+# This dictionary holds all the simulation parameters, categorized for clarity.
 PARAMS = {
     # --- SCENARIO SETUP ---
-    "scenario": "flagellar_wave", # Options: "static_helix", "static_circle", "flagellar_wave"
+    # Defines the simulation scenario. Options: "static_helix", "static_circle", "flagellar_wave".
+    "scenario": "flagellar_wave", 
 
     # --- ROD PROPERTIES ---
-    "M": 80,  # Number of immersed boundary points
-    "ds": 0.5, # Meshwidth for rod (um)
+    # Number of immersed boundary points discretizing the rod.
+    "M": 80, 
+    # Meshwidth for the rod (um), representing the spatial discretization size along the rod's centerline.
+    "ds": 0.5, 
 
     # --- TIME INTEGRATION ---
-    "dt": 1.0e-5,   # Time step (s)
-    "total_time": 0.1, # Total simulation time (s)
+    "dt": 1.0e-5,   # Time step (s) for the simulation.
+    "total_time": 0.1, # Total simulation time (s).
 
     # --- FLUID PROPERTIES ---
-    "mu": 1.0e-6,   # Fluid viscosity (g um^-1 s^-1)
+    "mu": 1.0e-6,   # Fluid viscosity (g um^-1 s^-1). Corresponds to 'u' in the Stokes equations.
 
     # --- REGULARIZATION ---
+    # Factor for the regularization parameter epsilon.
+    # The regularization parameter 'epsilon' smooths out singularities in the fundamental solutions of Stokes equations.
     "epsilon_reg_factor": 4.0,
 
     # --- MATERIAL & INTRINSIC SHAPE (default values) ---
-    "a1": 3.5e-2, "a2": 3.5e-2, "a3": 3.5e-2, # Bending/Twist moduli
-    "b1": 8.0e-1, "b2": 8.0e-1, "b3": 8.0e-1, # Shear/Stretch moduli
-    "Omega1": 0.0, "Omega2": 0.0, "Omega3": 0.0, # Default intrinsic state
+    # Bending/Twist moduli. 'a1' and 'a2' are bending moduli, 'a3' is the twisting modulus.
+    # For an axisymmetric rod with circular cross-section, a1 = a2.
+    "a1": 3.5e-2, "a2": 3.5e-2, "a3": 3.5e-2, 
+    # Shear/Stretch moduli. 'b1' and 'b2' are shear moduli, 'b3' is the extension modulus.
+    "b1": 8.0e-1, "b2": 8.0e-1, "b3": 8.0e-1, 
+    # Default intrinsic state (strain twist vector).
+    # Omega1 and Omega2 relate to intrinsic curvature, Omega3 to intrinsic twist.
+    "Omega1": 0.0, "Omega2": 0.0, "Omega3": 0.0, 
 
     # --- INITIAL SHAPE ---
-    "initial_shape": "straight",
-    "straight_rod_orientation_axis": 'z', 
-    "xi_pert": 0,
+    "initial_shape": "straight", # Initial configuration of the rod. Options: "straight", "circular".
+    "straight_rod_orientation_axis": 'z', # Axis along which a straight rod is oriented.
+    "xi_pert": 0, # Perturbation angle for initial orientation (if applicable).
 
     # --- FLAGELLAR WAVE PARAMETERS (for 'flagellar_wave' scenario) ---
-    "k_wave": 2 * np.pi / 15.0, # Wave number (rad/um), for a wavelength of 5um
-    "b_amp": 0.2,              # Wave amplitude (um)
-    "sigma_freq": 75,         # Wave angular frequency (rad/s)
+    # These parameters define a sinusoidal wave propagating along the flagellum.
+    "k_wave": 2 * np.pi / 15.0, # Wave number (rad/um).
+    "b_amp": 0.2,               # Wave amplitude (um).
+    "sigma_freq": 75,           # Wave angular frequency (rad/s).
 
     # --- ANIMATION SETTINGS ---
-    "animation_interval": 40,
-    "animation_steps_skip": 100,
-    "debug_plot_interval_steps": 500, # New parameter for how often to plot debug info
+    "animation_interval": 40, # Delay between frames in milliseconds for animation.
+    "animation_steps_skip": 100, # Number of simulation steps to skip before saving a frame for animation.
+    "debugging": False, # Enable/disable debugging plots.
+    "debug_plot_interval_steps": 500, # How often to plot debug information (in simulation steps).
 }
 
 # --- Scenario-specific overrides ---
+# Adjusts parameters based on the chosen scenario.
 if PARAMS["scenario"] == "static_helix":
     PARAMS.update({
         "M": 76, "ds": 0.0785, "total_time": 0.005,
-        "Omega1": 1.3, "Omega3": np.pi / 2.0,
+        "Omega1": 1.3, "Omega3": np.pi / 2.0, # Non-zero intrinsic curvature (Omega1) and twist (Omega3) for a helix.
         "initial_shape": "straight", "straight_rod_orientation_axis": 'z'
     })
 elif PARAMS["scenario"] == "static_circle":
     PARAMS.update({
         "M": 76, "ds": 0.0785, "total_time": 0.01,
-        "initial_shape": "circular", "r0_circ_val": 2.5
+        "initial_shape": "circular", "r0_circ_val": 2.5 # Parameters for an initially circular rod.
     })
 
+# Effective length of the rod.
 PARAMS["L_eff"] = (PARAMS["M"] - 1) * PARAMS["ds"]
+# Regularization parameter.
 PARAMS["epsilon_reg"] = PARAMS["epsilon_reg_factor"] * PARAMS["ds"]
 
 # --- Helper Functions for Regularized Stokes Flow ---
+# These functions are components of the regularized Stokeslet and rotlet kernels,
+# which are fundamental solutions for the fluid velocity and angular velocity fields
+# generated by regularized point forces and torques.
 @numba.njit(cache=True)
-def H1_func(r, epsilon_reg): return (2*epsilon_reg**2 + r**2)/(8*np.pi*(epsilon_reg**2+r**2)**1.5)
+def H1_func(r, epsilon_reg): 
+    # Corresponds to H1(r), Eq. (63).
+    return (2*epsilon_reg**2 + r**2)/(8*np.pi*(epsilon_reg**2+r**2)**1.5)
 @numba.njit(cache=True)
-def H2_func(r, epsilon_reg): return 1.0/(8*np.pi*(epsilon_reg**2 + r**2)**1.5)
+def H2_func(r, epsilon_reg): 
+    # Corresponds to H2(r), Eq. (64).
+    return 1.0/(8*np.pi*(epsilon_reg**2 + r**2)**1.5)
 @numba.njit(cache=True)
-def Q_func(r, epsilon_reg): return (5*epsilon_reg**2 + 2*r**2)/(8*np.pi*(epsilon_reg**2+r**2)**2.5)
+def Q_func(r, epsilon_reg): 
+    # Corresponds to Q(r), Eq. (65).
+    return (5*epsilon_reg**2 + 2*r**2)/(8*np.pi*(epsilon_reg**2+r**2)**2.5)
 @numba.njit(cache=True)
-def D1_func(r, epsilon_reg): return (10*epsilon_reg**4 - 7*epsilon_reg**2*r**2 - 2*r**4)/(8*np.pi*(epsilon_reg**2+r**2)**3.5)
+def D1_func(r, epsilon_reg): 
+    # Corresponds to D1(r), Eq. (67).
+    return (10*epsilon_reg**4 - 7*epsilon_reg**2*r**2 - 2*r**4)/(8*np.pi*(epsilon_reg**2+r**2)**3.5)
 @numba.njit(cache=True)
-def D2_func(r, epsilon_reg): return (21*epsilon_reg**2 + 6*r**2)/(8*np.pi*(epsilon_reg**2+r**2)**3.5)
+def D2_func(r, epsilon_reg): 
+    # Corresponds to D2(r), Eq. (68).
+    return (21*epsilon_reg**2 + 6*r**2)/(8*np.pi*(epsilon_reg**2+r**2)**3.5)
 
 # --- Rotation Helpers ---
 def get_rotation_matrix_sqrt(R_mat):
+    """
+    Computes the rotational vector whose rotation matrix, when multiplied by itself,
+    results in R_mat. Used for updating orthonormal triads.
+    Handles potential numerical inaccuracies in rotation matrices.
+    """
     try:
         if not np.allclose(R_mat@R_mat.T,np.eye(3),atol=1e-5) or not np.isclose(np.linalg.det(R_mat),1.0,atol=1e-5):
+            # If R_mat is not a perfect rotation matrix, use SVD to find the closest one.
             U,_,Vh = np.linalg.svd(R_mat); R_mat=U@Vh
             if np.linalg.det(R_mat)<0: Vh[-1,:]*=-1; R_mat=U@Vh
+        # Convert rotation matrix to rotation vector (Rodrigues vector) and scale by 0.5.
         return Rotation.from_matrix(R_mat).as_rotvec() * 0.5
     except Exception as e: raise e
 
 def get_rodrigues_rotation_matrix(axis_vector, angle_rad):
+    """
+    Generates a 3x3 rotation matrix using Rodrigues' rotation formula.
+    This rotates a vector around a specified axis by a given angle.
+    Used for updating the rod's orthonormal triad (directors).
+    """
     norm_axis=np.linalg.norm(axis_vector)
     if np.isclose(angle_rad,0) or norm_axis<1e-9: return np.eye(3)
     return Rotation.from_rotvec(axis_vector/norm_axis*angle_rad).as_matrix()
@@ -89,46 +131,75 @@ def get_rodrigues_rotation_matrix(axis_vector, angle_rad):
 # --- Numba JITed core velocity computation ---
 @numba.njit(cache=True)
 def _compute_velocities_core(M,X,g0_all,m0_all,epsilon_reg,mu):
+    """
+    Computes the linear (u_out) and angular (w_out) velocities of the rod
+    at each point, based on the regularized Stokes formulation.
+    This function implements the superposition of fundamental solutions (Stokeslets, rotlets)
+    for forces and torques acting on the rod.
+    The formulas for u and w are based on Eqs. (61) and (66).
+    """
     u_out=np.zeros((M,3)); w_out=np.zeros((M,3))
-    for j in range(M):
+    for j in range(M): # Iterate through each point on the rod to compute its velocity.
         Xj=X[j]; sum_u=np.zeros(3); sum_w=np.zeros(3)
-        for k in range(M):
+        for k in range(M): # Sum contributions from all other points (k) on the rod.
             Xk=X[k]; g0k=g0_all[k]; m0k=m0_all[k]
-            r_vec=Xj-Xk; r_mag=np.sqrt(r_vec[0]**2+r_vec[1]**2+r_vec[2]**2)
-            if r_mag<1e-9:
+            r_vec=Xj-Xk; # Vector from source point k to observation point j.
+            r_mag=np.sqrt(r_vec[0]**2+r_vec[1]**2+r_vec[2]**2) # Magnitude of r_vec.
+            
+            if r_mag<1e-9: # Handle the singular case where r_mag is close to zero (source and observation points coincide).
                 h1=H1_func(0.,epsilon_reg); d1=D1_func(0.,epsilon_reg)
                 sum_u+=g0k*h1; sum_w+=.25*m0k*d1
-            else:
+            else: # General case using regularized kernels.
                 h1=H1_func(r_mag,epsilon_reg); h2=H2_func(r_mag,epsilon_reg); q=Q_func(r_mag,epsilon_reg)
                 d1=D1_func(r_mag,epsilon_reg); d2=D2_func(r_mag,epsilon_reg)
-                dot_g_r=np.dot(g0k,r_vec); cross_m_r=np.cross(m0k,r_vec)
-                sum_u+=g0k*h1+dot_g_r*r_vec*h2+.5*cross_m_r*q
-                dot_m_r=np.dot(m0k,r_vec); cross_g_r=np.cross(g0k,r_vec)
-                sum_w+=.5*cross_g_r*q+.25*m0k*d1+.25*dot_m_r*r_vec*d2
-        u_out[j]=sum_u/mu; w_out[j]=sum_w/mu
+                
+                # Contribution to linear velocity (u) from force (g0k) and torque (m0k).
+                sum_u+=g0k*h1+np.dot(g0k,r_vec)*r_vec*h2+.5*np.cross(m0k,r_vec)*q # Eq. (61)
+                
+                # Contribution to angular velocity (w) from force (g0k) and torque (m0k).
+                sum_w+=.5*np.cross(g0k,r_vec)*q+.25*m0k*d1+.25*np.dot(m0k,r_vec)*r_vec*d2 # Eq. (66)
+        
+        u_out[j]=sum_u/mu; w_out[j]=sum_w/mu # Scale by inverse viscosity.
     return u_out, w_out
 
 # --- Rod Class ---
 class KirchhoffRod:
+    """
+    Represents the elastic rod governed by the Kirchhoff rod model.
+    It manages the rod's configuration, material properties, and handles its dynamics.
+    """
     def __init__(self, params):
-        self.p = params; self.M = self.p["M"]; self.ds = self.p["ds"]
-        self.mu = self.p["mu"]; self.epsilon_reg = self.p["epsilon_reg"]; self.dt = self.p["dt"]
+        self.p = params
+        self.M = self.p["M"] # Number of points.
+        self.ds = self.p["ds"] # Meshwidth.
+        self.mu = self.p["mu"] # Fluid viscosity.
+        self.epsilon_reg = self.p["epsilon_reg"] # Regularization parameter.
+        self.dt = self.p["dt"] # Time step.
+
+        # Material moduli for bending/twist (a) and shear/stretch (b).
         self.a = np.array([self.p["a1"],self.p["a2"],self.p["a3"]])
         self.b = np.array([self.p["b1"],self.p["b2"],self.p["b3"]])
-        self.X = np.zeros((self.M, 3)); self.D1 = np.zeros((self.M, 3))
-        self.D2 = np.zeros((self.M, 3)); self.D3 = np.zeros((self.M, 3))
+        
+        # Rod state variables:
+        self.X = np.zeros((self.M, 3)) # Centerline coordinates of the rod.
+        self.D1 = np.zeros((self.M, 3)) # Orthonormal director D1.
+        self.D2 = np.zeros((self.M, 3)) # Orthonormal director D2.
+        self.D3 = np.zeros((self.M, 3)) # Orthonormal director D3 (tangent-like).
 
-        self.time = 0.0
-        self.s_vals = np.arange(self.M) * self.ds
+        self.time = 0.0 # Current simulation time.
+        self.s_vals = np.arange(self.M) * self.ds # Lagrangian parameter 's' values along the rod.
 
+        # Intrinsic curvature and twist (Omega).
+        # Tiled to have a value for each point on the rod.
         omega_vec = np.array([self.p["Omega1"], self.p["Omega2"], self.p["Omega3"]])
         self.Omega = np.tile(omega_vec, (self.M, 1))
 
-        s_vals = np.arange(self.M) * self.ds
+        # --- Initial Shape Setup ---
         initial_shape = self.p.get("initial_shape", "straight")
 
         if initial_shape == "straight":
-            xi = self.p["xi_pert"]
+            # Initializes the rod as a straight line along a specified axis.
+            xi = self.p["xi_pert"] # Initial perturbation for the orientation.
             orient_axis = self.p.get("straight_rod_orientation_axis", 'z')
             if orient_axis == 'x':
                 self.X[:, 0] = s_vals; self.D3[:, 0] = 1.0; self.D1[:, 1] = 1.0; self.D2[:, 2] = 1.0
@@ -136,10 +207,13 @@ class KirchhoffRod:
                 self.X[:, 1] = s_vals; self.D3[:, 1] = 1.0; self.D1[:, 2] = 1.0; self.D2[:, 0] = 1.0
             else: # Default 'z'
                 self.X[:, 2] = s_vals; self.D3[:, 2] = 1.0; self.D1[:, 0] = 1.0; self.D2[:, 1] = 1.0
+            
+            # Apply initial perturbation rotation.
             pert_rot = get_rodrigues_rotation_matrix(self.D3[0], xi)
             self.D1 = self.D1 @ pert_rot.T; self.D2 = self.D2 @ pert_rot.T
 
         elif initial_shape == "circular":
+            # Initializes the rod as a circular shape.
             r0 = self.p.get("r0_circ_val", self.p["L_eff"]/(2*np.pi) if self.p["L_eff"]>0 else 1.0)
             eta = self.p.get("eta_pert", 0.0)
             theta_s_vals = s_vals / r0
@@ -152,7 +226,8 @@ class KirchhoffRod:
                 self.D1[i,:] = np.cos(alpha_s[i])*z_vec + np.sin(alpha_s[i])*r_vec
                 self.D2[i,:] = -np.sin(alpha_s[i])*z_vec + np.cos(alpha_s[i])*r_vec
 
-        # Final orthonormalization of initial directors
+        # Final orthonormalization of initial directors.
+        # Ensures D1, D2, D3 form a right-handed orthonormal triad at each point.
         for i in range(self.M):
             d1,d2 = self.D1[i].copy(), self.D2[i].copy();
             if np.linalg.norm(d1)>1e-9: d1/=np.linalg.norm(d1)
@@ -165,98 +240,148 @@ class KirchhoffRod:
             self.D1[i],self.D2[i]=d1,d2_ortho; self.D3[i]=np.cross(d1,d2_ortho)
 
     def update_intrinsic_curvature(self):
+        """
+        Updates the intrinsic curvature and twist (Omega) based on the simulation scenario.
+        For "flagellar_wave" scenario, it sets up a sinusoidal propagating wave.
+        """
         if self.p["scenario"] == "flagellar_wave":
-            k = self.p["k_wave"]
-            b = self.p["b_amp"]
-            sigma = self.p["sigma_freq"]
+            k = self.p["k_wave"]     # Wave number.
+            b = self.p["b_amp"]      # Wave amplitude.
+            sigma = self.p["sigma_freq"] # Wave angular frequency.
+            # Defines the phase of the sinusoidal wave.
             phase = k*(40+self.s_vals) + sigma * self.time
+            # Sets Omega1 component to create the bending wave.
             self.Omega[:, 0] = -k**2 * b * np.sin(phase)
             self.Omega[:, 1] = 0.0
             self.Omega[:, 2] = 0.0
 
     def compute_internal_forces_and_moments(self):
+        """
+        Computes the internal forces (F_half) and moments (N_half) along the rod segments.
+        These are derived from the constitutive relations of the Kirchhoff rod model,
+        based on the rod's current configuration and its intrinsic shape.
+        Specifically, it implements Eqs. (5a) and (5b).
+        """
         F_half=np.zeros((self.M-1,3)); N_half=np.zeros((self.M-1,3))
-        for k in range(self.M-1):
-            Dk_mat = np.array([self.D1[k],self.D2[k],self.D3[k]])
-            Dkp1_mat = np.array([self.D1[k+1],self.D2[k+1],self.D3[k+1]])
+        for k in range(self.M-1): # Iterate through segments of the rod.
+            Dk_mat = np.array([self.D1[k],self.D2[k],self.D3[k]]) # Directors at point k.
+            Dkp1_mat = np.array([self.D1[k+1],self.D2[k+1],self.D3[k+1]]) # Directors at point k+1.
+            
+            # Compute a "half-segment" rotation matrix for averaging.
             sqrt_Ak_rotvec = get_rotation_matrix_sqrt(Dkp1_mat @ Dk_mat.T)
             D_half_k_mat = Rotation.from_rotvec(sqrt_Ak_rotvec).as_matrix() @ Dk_mat
-            D1h,D2h,D3h=D_half_k_mat[0],D_half_k_mat[1],D_half_k_mat[2]
-            dXds=(self.X[k+1]-self.X[k])/self.ds
+            D1h,D2h,D3h=D_half_k_mat[0],D_half_k_mat[1],D_half_k_mat[2] # Half-segment directors.
+            
+            dXds=(self.X[k+1]-self.X[k])/self.ds # Discrete derivative of centerline position.
+
+            # Compute force coefficients (Eq. 5b).
+            # This represents the deviation from the inextensibility and shear constraints.
             F_coeffs=self.b*(np.array([np.dot(D1h,dXds),np.dot(D2h,dXds),np.dot(D3h,dXds)])-np.array([0,0,1]))
-            F_half[k]=F_coeffs[0]*D1h+F_coeffs[1]*D2h+F_coeffs[2]*D3h
+            F_half[k]=F_coeffs[0]*D1h+F_coeffs[1]*D2h+F_coeffs[2]*D3h # Convert coefficients to global frame force.
+            
+            # Discrete derivatives of directors for curvature and twist.
             dD1ds,dD2ds,dD3ds=(self.D1[k+1]-self.D1[k])/self.ds,(self.D2[k+1]-self.D2[k])/self.ds,(self.D3[k+1]-self.D3[k])/self.ds
-            omega_half = (self.Omega[k] + self.Omega[k+1]) / 2.0
+            omega_half = (self.Omega[k] + self.Omega[k+1]) / 2.0 # Averaged intrinsic state.
+
+            # Compute moment coefficients (Eq. 5a).
+            # This represents the deviation from the intrinsic curvature and twist.
             N_coeffs=self.a*(np.array([np.dot(dD2ds,D3h),np.dot(dD3ds,D1h),np.dot(dD1ds,D2h)]) - omega_half)
-            N_half[k]=N_coeffs[0]*D1h+N_coeffs[1]*D2h+N_coeffs[2]*D3h
+            N_half[k]=N_coeffs[0]*D1h+N_coeffs[1]*D2h+N_coeffs[2]*D3h # Convert coefficients to global frame moment.
+            
         return F_half,N_half
 
     def compute_fluid_forces_on_rod(self,F_half,N_half):
+        """
+        Computes the force density (f_on_rod) and torque density (n_on_rod) exerted by the fluid on the rod.
+        These are derived from the force and torque balance equations.
+        Specifically, it implements the discrete versions of Eq. (3a) and Eq. (3b).
+        """
         f_on_rod=np.zeros((self.M,3));n_on_rod=np.zeros((self.M,3))
+        # Boundary conditions (zero force/torque at ends assumed for this implementation).
         F_b_start,F_b_end,N_b_start,N_b_end=np.zeros(3),np.zeros(3),np.zeros(3),np.zeros(3)
-        for k in range(self.M):
+        for k in range(self.M): # Iterate through each point on the rod.
+            # Central difference approximation for spatial derivatives.
             F_prev=F_b_start if k==0 else F_half[k-1]
             F_next=F_b_end if k==self.M-1 else F_half[k]
-            f_on_rod[k]=(F_next-F_prev)/self.ds
+            f_on_rod[k]=(F_next-F_prev)/self.ds # Force density: derivative of internal force (Eq. 3a).
+
             N_prev=N_b_start if k==0 else N_half[k-1]
             N_next=N_b_end if k==self.M-1 else N_half[k]
-            dN_ds=(N_next-N_prev)/self.ds
+            dN_ds=(N_next-N_prev)/self.ds # Derivative of internal moment.
+
             cross_term=np.zeros(3)
+            # Cross product term from torque balance equation (Eq. 3b).
             if k<self.M-1: cross_term+=np.cross((self.X[k+1]-self.X[k])/self.ds,F_next)
             if k>0: cross_term+=np.cross((self.X[k]-self.X[k-1])/self.ds,F_prev)
-            n_on_rod[k]=dN_ds+.5*cross_term
+            n_on_rod[k]=dN_ds+.5*cross_term # Torque density (Eq. 3b).
+            
         return f_on_rod,n_on_rod
 
     def compute_velocities(self,f_on_rod,n_on_rod):
-        g0_all=f_on_rod*self.ds; m0_all=n_on_rod*self.ds
+        """
+        Computes the linear (u_rod) and angular (w_rod) velocities of the rod
+        by calling the Numba-optimized core function.
+        This step couples the rod dynamics to the fluid dynamics using the regularized Stokes formulation.
+        """
+        # Convert force/torque densities to point forces/torques by multiplying by ds.
+        g0_all=f_on_rod*self.ds 
+        m0_all=n_on_rod*self.ds
         return _compute_velocities_core(self.M,self.X,g0_all,m0_all,self.epsilon_reg,self.mu)
 
     def update_state(self,u_rod,w_rod):
-        self.X+=u_rod*self.dt
-        for k in range(self.M):
+        """
+        Updates the rod's position (X) and orientation (directors D1, D2, D3)
+        using the computed linear (u_rod) and angular (w_rod) velocities.
+        This is a simple Euler step time integration.
+        """
+        self.X+=u_rod*self.dt # Update centerline position.
+        for k in range(self.M): # Update directors using angular velocity.
             wk=w_rod[k]
             if np.linalg.norm(wk)>1e-9:
+                # Rotate directors based on angular velocity using Rodrigues' formula.
                 R_matrix=get_rodrigues_rotation_matrix(wk,np.linalg.norm(wk)*self.dt)
-                self.D1[k]=self.D1[k]@R_matrix.T;self.D2[k]=self.D2[k]@R_matrix.T;self.D3[k]=self.D3[k]@R_matrix.T
+                self.D1[k]=self.D1[k]@R_matrix.T
+                self.D2[k]=self.D2[k]@R_matrix.T
+                self.D3[k]=self.D3[k]@R_matrix.T
 
     def simulation_step(self):
+        """
+        Performs a single simulation step for the Kirchhoff rod.
+        This involves:
+        1. Updating intrinsic curvature/twist (if time-dependent).
+        2. Computing internal elastic forces and moments.
+        3. Computing fluid forces and torques acting on the rod.
+        4. Calculating the resulting linear and angular velocities from fluid interaction.
+        5. Updating the rod's position and orientation.
+        """
         self.update_intrinsic_curvature()
         F_half,N_half=self.compute_internal_forces_and_moments()
         f_on_rod,n_on_rod=self.compute_fluid_forces_on_rod(F_half,N_half)
         u_rod,w_rod=self.compute_velocities(f_on_rod,n_on_rod)
         self.update_state(u_rod,w_rod)
-        self.time += self.dt
-        return u_rod, w_rod, f_on_rod, n_on_rod # Return for debugging
+        self.time += self.dt # Advance simulation time.
+        return u_rod, w_rod, f_on_rod, n_on_rod # Return for debugging/analysis.
 
 # --- Main Simulation and Animation Block ---
 if __name__ == '__main__':
-    rod=KirchhoffRod(PARAMS)
-    num_steps=int(PARAMS["total_time"]/PARAMS["dt"]); history_X=[]
-    history_u = []
-    history_w = []
-    history_f = []
-    history_n = []
+    rod=KirchhoffRod(PARAMS) # Initialize the Kirchhoff Rod.
+    num_steps=int(PARAMS["total_time"]/PARAMS["dt"]); 
+    
+    # Lists to store historical data for animation and saving.
+    history_X=[] # Rod centerline positions.
+    history_u = [] # Linear velocities.
+    history_w = [] # Angular velocities.
+    history_f = [] # Fluid forces.
+    history_n = [] # Fluid torques.
 
     print(f"Starting scenario: '{PARAMS['scenario']}' for {PARAMS['total_time']}s.")
     import time; start_time=time.time()
 
-    # --- Initial Curvature Plot ---
-    plt.figure(figsize=(8, 6))
-    plt.plot(rod.s_vals, rod.Omega[:, 0], label=r'$\Omega_1$')
-    plt.plot(rod.s_vals, rod.Omega[:, 1], label=r'$\Omega_2$')
-    plt.plot(rod.s_vals, rod.Omega[:, 2], label=r'$\Omega_3$')
-    plt.xlabel("s (um)")
-    plt.ylabel("Intrinsic Curvature (rad/um)")
-    plt.title("Initial Intrinsic Curvature Profile")
-    plt.legend()
-    plt.grid(True)
-    plt.tight_layout()
-    plt.show()
-
     for step in range(num_steps):
+        # Perform one simulation step.
         u_rod, w_rod, f_on_rod, n_on_rod = rod.simulation_step()
             
-
+        # Store data for animation and history saving at specified intervals.
         if step % PARAMS["animation_steps_skip"] == 0:
             history_X.append(rod.X.copy())
             history_u.append(u_rod.copy())
@@ -267,14 +392,16 @@ if __name__ == '__main__':
             if step % (PARAMS["animation_steps_skip"] * 5) == 0:
                 elapsed=time.time()-start_time
                 print(f"Step {step}/{num_steps}, Sim Time: {rod.time:.3f}s, Wall Time: {elapsed:.2f}s")
+            
+            # Check for simulation stability.
             if np.max(np.abs(rod.X)) > PARAMS["L_eff"]*5: print("Sim unstable."); break
             if np.isnan(rod.X).any(): print("NaN in coords."); break
 
-        # Debugging plots for velocities, forces, and torques at a specific interval
-        if step > 0 and step % PARAMS["debug_plot_interval_steps"] == 0:
+        # Debugging plots for velocities, forces, and torques at a specific interval.
+        if step % PARAMS["debug_plot_interval_steps"] == 0 and PARAMS["debugging"]:
             print(f"Plotting debug information at simulation time: {rod.time:.4f}s")
             
-            # Plot Rod Shape
+            # Plot Intrinsic Curvature Profile (Omega1).
             plt.figure(figsize=(7,4))
             plt.plot(rod.s_vals, rod.Omega[:, 0], 'o-')
             plt.xlabel("s (um)")
@@ -284,7 +411,7 @@ if __name__ == '__main__':
             plt.tight_layout()
             plt.show()
 
-            # Plot Velocities
+            # Plot Linear and Angular Velocities.
             plt.figure(figsize=(12, 6))
             plt.subplot(1, 2, 1)
             plt.plot(rod.s_vals, u_rod[:, 0], label='$u_x$')
@@ -308,7 +435,7 @@ if __name__ == '__main__':
             plt.tight_layout()
             plt.show()
 
-            # Plot Forces and Torques
+            # Plot Fluid Forces and Torques.
             plt.figure(figsize=(12, 6))
             plt.subplot(1, 2, 1)
             plt.plot(rod.s_vals, f_on_rod[:, 0], label='$f_x$')
@@ -335,8 +462,53 @@ if __name__ == '__main__':
 
     print(f"Simulation finished. Total wall time: {time.time()-start_time:.2f}s.")
 
+    if history_X: # Check if simulation ran and produced history.
+        print("\n Saving simulation history to text files...")
+        try:
+            output_dir = "simulation_history"
+            if not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            num_frames = len(history_X)
+            M = PARAMS['M']
+
+            # Helper function to save data to a text file.
+            def save_history(filename, data, header):
+                path = os.path.join(output_dir, filename)
+                # Reshape data to (num_frames * M, 3) for easier saving.
+                reshaped_data = np.array(data).reshape(num_frames * M, 3) 
+                np.savetxt(path, reshaped_data, fmt='%.8e', header=header, comments='')
+                print(f"   -> Saved: {path}")
+
+            # Save all recorded simulation histories.
+            save_history('history_X.txt', history_X, 'x y z')
+            save_history('history_u.txt', history_u, 'ux uy uz')
+            save_history('history_w.txt', history_w, 'wx wy wz')
+            save_history('history_f.txt', history_f, 'fx fy fz')
+            save_history('history_n.txt', history_n, 'nx ny nz')
+
+            # Save simulation parameters for reproducibility.
+            with open(os.path.join(output_dir, 'simulation_params.txt'), 'w') as f:
+                f.write(f"num_frames = {num_frames}\n")
+                f.write(f"M = {M}\n")
+                f.write(f"dt_snapshot = {PARAMS['animation_steps_skip'] * PARAMS['dt']}\n")
+                for key, value in PARAMS.items():
+                    f.write(f"{key} = {value}\n")
+            print(f"   -> Saved: {os.path.join(output_dir, 'simulation_params.txt')}")
+
+
+            print("\nData saved successfully.")
+            print("To load data back into a 3D numpy array (frames, M, 3), for example:")
+            print(f"loaded_X = np.loadtxt('{os.path.join(output_dir, 'history_X.txt')}', skiprows=1).reshape({num_frames}, {M}, 3)")
+
+        except Exception as e:
+            print(f"An error occurred while saving history data: {e}")
+
+    # --- Animation Setup ---
     fig=plt.figure(figsize=(12,8));ax=fig.add_subplot(111,projection='3d')
     line,=ax.plot([],[],[],'o-',lw=2,markersize=4,color='cyan')
+    
+    # Set plot limits based on simulation history for proper scaling.
     if history_X:
         all_coords=np.concatenate(history_X,axis=0)
         center=np.mean(all_coords,axis=0)
@@ -345,17 +517,22 @@ if __name__ == '__main__':
         ax.set_xlim(center[0]-plot_range,center[0]+plot_range)
         ax.set_ylim(center[1]-plot_range,center[1]+plot_range)
         ax.set_zlim(center[2]-plot_range,center[2]+plot_range)
+    
     ax.set_xlabel("X (um)");ax.set_ylabel("Y (um)");ax.set_zlabel("Z (um)")
     ax.set_title(f"Kirchhoff Rod: Scenario '{PARAMS['scenario']}'")
     time_text=ax.text2D(.05,.95,'',transform=ax.transAxes,color='white')
 
     def update_animation(frame):
+        """
+        Update function for the animation, called for each frame.
+        Sets the rod's position and updates the displayed time.
+        """
         X_data=history_X[frame]
         line.set_data(X_data[:,0],X_data[:,1]);line.set_3d_properties(X_data[:,2])
         time_text.set_text(f"Time: {frame*PARAMS['animation_steps_skip']*PARAMS['dt']:.3f} s")
         return line,time_text
 
-    if history_X:
+    if history_X: # Only create and save animation if simulation history exists.
         ani=FuncAnimation(fig,update_animation,frames=len(history_X),blit=False,interval=PARAMS["animation_interval"])
 
         try:
@@ -366,4 +543,4 @@ if __name__ == '__main__':
             print(f"Error saving as GIF: {e}")
             print("Make sure a suitable writer (like pillow or imagemagick) is available.")
 
-        plt.show()
+        plt.show() # Display the animation.
