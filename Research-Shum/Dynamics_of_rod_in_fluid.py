@@ -7,13 +7,17 @@ import numba # Added Numba import
 # --- Parameters ---
 # (PARAMS dictionary remains the same as your last version)
 PARAMS = {
+    # Scenario setup
+    # Defines the simulation scenario. Options: "static_helix", "flagellar_wave".
+    "scenario": "static_helix", 
+
     # Rod properties
     "M": 76,  # Number of immersed boundary points
     "ds": 0.0785,  # Meshwidth for rod (um)
 
     # Time integration
     "dt": 1.0e-6,  # Time step (s)
-    "total_time": 0.01, # Total simulation time (s) # For circular, might need longer, e.g., 0.1s
+    "total_time": 0.005, # Total simulation time (s) # For circular, might need longer, e.g., 0.1s
 
     # Fluid properties
     "mu": 1.0e-6,  # Fluid viscosity (g um^-1 s^-1)
@@ -29,22 +33,12 @@ PARAMS = {
     "b2": 8.0e-1,  # Shear modulus
     "b3": 8.0e-1,  # Stretch modulus
 
-    # Intrinsic strain twist vector (um^-1)
-    # Example for straight rod to helix (Fig. 2 top):
-    # "Omega1": 1.3,
-    # "Omega2": 0.0,
-    # "Omega3": np.pi / 2.0,
-    # Example for initially circular rod (based on Fig. 4, values might differ for open rod)
-    # "Omega1": 1.2, # Intrinsic curvature in D1 direction
+    # "Omega1": 0.0, # Intrinsic curvature in D1 direction
     # "Omega2": 0.0, # Intrinsic curvature in D2 direction
-    # "Omega3": 0.6, # Intrinsic twist
-
-    "Omega1": 0.0, # Intrinsic curvature in D1 direction
-    "Omega2": 0.0, # Intrinsic curvature in D2 direction
-    "Omega3": 0.0, # Intrinsic twist
+    # "Omega3": 0.0, # Intrinsic twist
 
     # Initial shape configuration
-    "initial_shape": "circular", # Options: "straight", "circular", "sinoidal"
+    "initial_shape": "straight", # Options: "straight", "circular", "sinoidal"
 
     # Parameters for "straight" initial_shape
     "xi_pert": 0.0001, # Perturbation for straight rod (from paper, section 6.1)

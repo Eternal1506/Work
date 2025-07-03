@@ -7,7 +7,7 @@ import numba # For performance optimization
 # --- Parameters ---
 PARAMS = {
     # --- SCENARIO SETUP ---
-    "scenario": "gravity_fall", # Options: "twist_helix", "gravity_fall"
+    "scenario": "twist_helix", # Options: "twist_helix", "gravity_fall"
     
     # --- ROD PROPERTIES ---
     "M": 40,  # Number of immersed boundary points (fewer for faster gravity demo)

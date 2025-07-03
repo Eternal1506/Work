@@ -20,7 +20,7 @@ PARAMS = {
 
     # --- TIME INTEGRATION ---
     "dt": 1.0e-5,   # Time step (s) for the simulation.
-    "total_time": 0.1, # Total simulation time (s).
+    "total_time": 0.05, # Total simulation time (s).
 
     # --- FLUID PROPERTIES ---
     "mu": 1.0e-6,   # Fluid viscosity (g um^-1 s^-1). Corresponds to 'u' in the Stokes equations.
@@ -47,9 +47,9 @@ PARAMS = {
 
     # --- FLAGELLAR WAVE PARAMETERS (for 'flagellar_wave' scenario) ---
     # These parameters define a sinusoidal wave propagating along the flagellum.
-    "k_wave": 2 * np.pi / 15.0, # Wave number (rad/um).
+    "k_wave": 2 * np.pi / 5.0, # Wave number (rad/um).
     "b_amp": 0.2,               # Wave amplitude (um).
-    "sigma_freq": 75,           # Wave angular frequency (rad/s).
+    "sigma_freq": 275,           # Wave angular frequency (rad/s).
 
     # --- ANIMATION SETTINGS ---
     "animation_interval": 40, # Delay between frames in milliseconds for animation.
@@ -202,11 +202,11 @@ class KirchhoffRod:
             xi = self.p["xi_pert"] # Initial perturbation for the orientation.
             orient_axis = self.p.get("straight_rod_orientation_axis", 'z')
             if orient_axis == 'x':
-                self.X[:, 0] = s_vals; self.D3[:, 0] = 1.0; self.D1[:, 1] = 1.0; self.D2[:, 2] = 1.0
+                self.X[:, 0] = self.s_vals; self.D3[:, 0] = 1.0; self.D1[:, 1] = 1.0; self.D2[:, 2] = 1.0
             elif orient_axis == 'y':
-                self.X[:, 1] = s_vals; self.D3[:, 1] = 1.0; self.D1[:, 2] = 1.0; self.D2[:, 0] = 1.0
+                self.X[:, 1] = self.s_vals; self.D3[:, 1] = 1.0; self.D1[:, 2] = 1.0; self.D2[:, 0] = 1.0
             else: # Default 'z'
-                self.X[:, 2] = s_vals; self.D3[:, 2] = 1.0; self.D1[:, 0] = 1.0; self.D2[:, 1] = 1.0
+                self.X[:, 2] = self.s_vals; self.D3[:, 2] = 1.0; self.D1[:, 0] = 1.0; self.D2[:, 1] = 1.0
             
             # Apply initial perturbation rotation.
             pert_rot = get_rodrigues_rotation_matrix(self.D3[0], xi)
@@ -216,7 +216,7 @@ class KirchhoffRod:
             # Initializes the rod as a circular shape.
             r0 = self.p.get("r0_circ_val", self.p["L_eff"]/(2*np.pi) if self.p["L_eff"]>0 else 1.0)
             eta = self.p.get("eta_pert", 0.0)
-            theta_s_vals = s_vals / r0
+            theta_s_vals = self.s_vals / r0
             self.X[:,0] = r0*np.cos(theta_s_vals); self.X[:,1] = r0*np.sin(theta_s_vals)
             self.D3[:,0] = -np.sin(theta_s_vals); self.D3[:,1] = np.cos(theta_s_vals)
             alpha_s = eta * np.sin(theta_s_vals)
@@ -394,8 +394,8 @@ if __name__ == '__main__':
                 print(f"Step {step}/{num_steps}, Sim Time: {rod.time:.3f}s, Wall Time: {elapsed:.2f}s")
             
             # Check for simulation stability.
-            if np.max(np.abs(rod.X)) > PARAMS["L_eff"]*5: print("Sim unstable."); break
-            if np.isnan(rod.X).any(): print("NaN in coords."); break
+            # if np.max(np.abs(rod.X)) > PARAMS["L_eff"]*5: print("Sim unstable."); break
+            # if np.isnan(rod.X).any(): print("NaN in coords."); break
 
         # Debugging plots for velocities, forces, and torques at a specific interval.
         if step % PARAMS["debug_plot_interval_steps"] == 0 and PARAMS["debugging"]:
