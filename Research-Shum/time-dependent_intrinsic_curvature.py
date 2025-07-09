@@ -14,8 +14,8 @@ PARAMS = {
     "scenario": "flagellar_wave", 
 
     # Rod properties
-    "M": 600,  # Number of immersed boundary points
-    "ds": 0.0667,  # Meshwidth for rod (um)
+    "M": 150,  # Number of immersed boundary points
+    "ds": 0.087,  # Meshwidth for rod (um)
 
     # Time integration
     "dt": 1.0e-6,  # Time step (s)
