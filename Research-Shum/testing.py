@@ -16,7 +16,7 @@ PARAMS = {
 
     # Rod properties
     "M": 150,  # Number of immersed boundary points
-    "ds": 0.087,  # Meshwidth for rod (um)
+    "ds": 0.267,  # Meshwidth for rod (um)
 
     # Time integration
     "dt": 1.0e-6,  # Time step (s)
