@@ -19,8 +19,8 @@ def create_animation_from_files(history_dir="simulation_history"):
     #     print("Please run the main simulation script first to generate the data.")
     #     return
 
-    params_path = "Research-Shum/simulation_history/simulation_params.txt"
-    x_history_path = "Research-Shum/simulation_history/history_X.txt"
+    params_path = "simulation_history\simulation_params.txt"
+    x_history_path = "simulation_history\history_X.txt"
 
     if not os.path.exists(params_path) or not os.path.exists(x_history_path):
         print("Error: Missing 'simulation_params.txt' or 'history_X.txt'.")
