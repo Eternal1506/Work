@@ -7,8 +7,8 @@ from mpl_toolkits.mplot3d import Axes3D
 # Define the curvature function
 # -----------------------------
 def curvature(s):
-    # Constant curvature: bends around y-axis with kappa2 = 1
-    return np.array([10, 0, 1])
+    # Example curvature function: wave
+    return np.array([10 * np.sin(s), 0, 1])
 
 # -----------------------------
 # ODE system for rod kinematics

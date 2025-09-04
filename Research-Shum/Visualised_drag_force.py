@@ -113,6 +113,18 @@ def update(frame):
     return line, *force_quivers
 
 # Animate
-anim = FuncAnimation(fig, update, init_func=init, frames=num_steps, interval=50, blit=False)
+ani = FuncAnimation(fig, update, init_func=init, frames=num_steps, interval=50, blit=False)
+try:
+    save_filename = 'Visualised_drag_force.mp4'
+    print(f"Attempting to save animation as {save_filename}...")
+    ani.save(save_filename, writer='ffmpeg', fps=15, dpi=150)
+    print(f"Animation saved as {save_filename}")
+except Exception as e:
+    print(f"Error saving as MP4: {e}. Trying GIF...")
+try:
+    ani.save('Visualised_drag_force.gif', writer='pillow', fps=10, dpi=100)
+    print("Animation saved as Visualised_drag_force.gif")
+except Exception as e:
+    print(f"Error saving as GIF: {e}")
 plt.tight_layout()
 plt.show()

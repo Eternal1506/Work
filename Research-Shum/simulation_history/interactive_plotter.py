@@ -16,7 +16,7 @@ def create_interactive_plotter(history_dir="simulation_history"):
     try:
         # Helper to load a single file
         def load_history_file(filename, params):
-            path = f"simulation_history/{filename}"
+            path = f"C:\\Users\\Prath\\OneDrive\\Documents\\Work\\Research-Shum\\simulation_history\\{filename}"
             if not os.path.exists(path):
                 print(f"Warning: History file not found: {filename}. Skipping.")
                 return None
@@ -25,7 +25,7 @@ def create_interactive_plotter(history_dir="simulation_history"):
             return flat_data.reshape(params['num_frames'], params['M'], 3)
 
         # Load parameters first to get dimensions
-        params_path = "simulation_history\simulation_params.txt"
+        params_path = "C:\\Users\\Prath\\OneDrive\\Documents\\Work\\Research-Shum\\simulation_history\\simulation_params.txt"
         if not os.path.exists(params_path):
             print(f"Error: 'simulation_params.txt' not found in '{history_dir}'.")
             return

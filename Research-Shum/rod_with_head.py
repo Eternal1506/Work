@@ -23,8 +23,8 @@ PARAMS = {
     "straight_rod_orientation_axis": 'z',
     "xi_pert": 0,
     "k_wave": 2 * np.pi / 5.0,
-    "b_amp": 0.8,
-    "sigma_freq": 275,
+    "b_amp": 0.2,
+    "sigma_freq": 250,
     "animation_interval": 40,
     "animation_steps_skip": 100,
     "debugging": False,
@@ -654,6 +654,9 @@ if __name__ == '__main__':
             save_history('history_w.txt', history_w, 'wx wy wz')
             save_history('history_f.txt', history_f, 'fx fy fz')
             save_history('history_n.txt', history_n, 'nx ny nz')
+            if rod.has_head:
+                save_history('history_head_X.txt', history_X_head, 'x y z')
+
 
             with open(os.path.join(output_dir, 'simulation_params.txt'), 'w') as f:
                 f.write(f"num_frames = {num_frames}\n")
@@ -738,48 +741,48 @@ if __name__ == '__main__':
         print("No history data to animate.")
 
     # --- Example: compute + plot a 2D flow slice at final frame if saved history exists ---
-    if history_X:
-        # compute g0 and m0 for final state to evaluate flow
-        final_f = history_f[-1]
-        final_n = history_n[-1]
-        # filament point forces and torques -> multiply by ds to get point-force/torque
-        g0_fil = final_f * rod.ds
-        m0_fil = final_n * rod.ds
-        if rod.has_head:
-            g0_head, m0_head = rod.compute_head_force_and_torque(final_f, final_n)
-            X_all = np.vstack([rod.X, rod.X_head.reshape(1, 3)])
-            g0_all = np.vstack([g0_fil, g0_head.reshape(1, 3)])
-            m0_all = np.vstack([m0_fil, m0_head.reshape(1, 3)])
-            eps_all = np.empty(rod.M + 1)
-            for i in range(rod.M):
-                eps_all[i] = rod.epsilon_reg
-            eps_all[rod.M] = rod.eps_head
-        else:
-            X_all = rod.X.copy()
-            g0_all = g0_fil.copy()
-            m0_all = m0_fil.copy()
-            eps_all = np.full(rod.M, rod.epsilon_reg)
+    # if history_X:
+    #     # compute g0 and m0 for final state to evaluate flow
+    #     final_f = history_f[-1]
+    #     final_n = history_n[-1]
+    #     # filament point forces and torques -> multiply by ds to get point-force/torque
+    #     g0_fil = final_f * rod.ds
+    #     m0_fil = final_n * rod.ds
+    #     if rod.has_head:
+    #         g0_head, m0_head = rod.compute_head_force_and_torque(final_f, final_n)
+    #         X_all = np.vstack([rod.X, rod.X_head.reshape(1, 3)])
+    #         g0_all = np.vstack([g0_fil, g0_head.reshape(1, 3)])
+    #         m0_all = np.vstack([m0_fil, m0_head.reshape(1, 3)])
+    #         eps_all = np.empty(rod.M + 1)
+    #         for i in range(rod.M):
+    #             eps_all[i] = rod.epsilon_reg
+    #         eps_all[rod.M] = rod.eps_head
+    #     else:
+    #         X_all = rod.X.copy()
+    #         g0_all = g0_fil.copy()
+    #         m0_all = m0_fil.copy()
+    #         eps_all = np.full(rod.M, rod.epsilon_reg)
 
-        # build a 2D grid in the plane z = center_z (or z=0)
-        nx, ny = 40, 40
-        xlim = (-2.0, 2.0)
-        ylim = (-2.0, 2.0)
-        xs = np.linspace(xlim[0], xlim[1], nx)
-        ys = np.linspace(ylim[0], ylim[1], ny)
-        Xg, Yg = np.meshgrid(xs, ys)
-        pts = np.column_stack([Xg.ravel(), Yg.ravel(), np.full(Xg.size, 0.0)])
-        print("Evaluating velocity field on 2D slice (num points = {})...".format(pts.shape[0]))
-        us = evaluate_velocity_field(pts, X_all, g0_all, m0_all, eps_all, rod.mu)
-        Ux = us[:, 0].reshape(Xg.shape); Uy = us[:, 1].reshape(Xg.shape)
-        speed = np.sqrt(Ux ** 2 + Uy ** 2)
+    #     # build a 2D grid in the plane z = center_z (or z=0)
+    #     nx, ny = 40, 40
+    #     xlim = (-2.0, 2.0)
+    #     ylim = (-2.0, 2.0)
+    #     xs = np.linspace(xlim[0], xlim[1], nx)
+    #     ys = np.linspace(ylim[0], ylim[1], ny)
+    #     Xg, Yg = np.meshgrid(xs, ys)
+    #     pts = np.column_stack([Xg.ravel(), Yg.ravel(), np.full(Xg.size, 0.0)])
+    #     print("Evaluating velocity field on 2D slice (num points = {})...".format(pts.shape[0]))
+    #     us = evaluate_velocity_field(pts, X_all, g0_all, m0_all, eps_all, rod.mu)
+    #     Ux = us[:, 0].reshape(Xg.shape); Uy = us[:, 1].reshape(Xg.shape)
+    #     speed = np.sqrt(Ux ** 2 + Uy ** 2)
 
-        plt.figure(figsize=(7, 6))
-        plt.streamplot(xs, ys, Ux, Uy, density=1.5)
-        plt.scatter(X_all[:, 0], X_all[:, 1], c='k', s=8)
-        # color background by speed (showing imshow under streamplot)
-        plt.imshow(speed, origin='lower', extent=(xlim[0], xlim[1], ylim[0], ylim[1]), alpha=0.6)
-        plt.colorbar(label='speed (um/s)')
-        plt.title('Flow slice (z=0)')
-        plt.xlabel('x'); plt.ylabel('y')
-        plt.tight_layout()
-        plt.show()
+    #     plt.figure(figsize=(7, 6))
+    #     plt.streamplot(xs, ys, Ux, Uy, density=1.5)
+    #     plt.scatter(X_all[:, 0], X_all[:, 1], c='k', s=8)
+    #     # color background by speed (showing imshow under streamplot)
+    #     plt.imshow(speed, origin='lower', extent=(xlim[0], xlim[1], ylim[0], ylim[1]), alpha=0.6)
+    #     plt.colorbar(label='speed (um/s)')
+    #     plt.title('Flow slice (z=0)')
+    #     plt.xlabel('x'); plt.ylabel('y')
+    #     plt.tight_layout()
+    #     plt.show()
